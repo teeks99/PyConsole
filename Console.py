@@ -15,11 +15,21 @@ use, modify, or distribute the software for any purpose is hereby granted."""
 # TODO: blink or highlight matching brackets
 # TODO: delete the prompt when joining lines; allow a way to break lines
 
-from Tkinter import *
-import sys, string, traceback, types, __builtin__
+try:
+    import Tkinter
+    import __builtin__
+except ImportError:# Py3
+    import tkinter as Tkinter 
+    import builtins as __builtin__
+    
+import string    
+import sys 
+import traceback
+import types
+import threading
 
 REVISION = "$Revision: 1.4 $"
-VERSION = string.split(REVISION)[1]
+VERSION = REVISION.split()[1]
 
 class OutputPipe:
     """A substitute file object for redirecting output to a function."""
@@ -41,11 +51,11 @@ class OutputPipe:
         self.closed = 1
 
 
-class Console(Frame):
+class Console(Tkinter.Frame):
     def __init__(self, parent=None, dict={}, **options):
         """Construct from a parent widget, an optional dictionary to use
         as the namespace for execution, and any configuration options."""
-        Frame.__init__(self, parent)
+        Tkinter.Frame.__init__(self, parent)
 
         # Continuation state.
 
@@ -76,13 +86,12 @@ class Console(Frame):
         if not hasattr(sys, "ps1"): sys.ps1 = ">>> "
         if not hasattr(sys, "ps2"): sys.ps2 = "... "
         self.prefixes = [sys.ps1, sys.ps2, ">> ", "> "]
-        self.startup = "Python %s\n%s\n" % (sys.version, sys.copyright) + \
-            "Python Console v%s by Ka-Ping Yee <ping@lfw.org>\n" % VERSION
+        self.startup = "Python Console\n"
         self.dict = dict
 
         # The text box.
 
-        self.text = Text(self, insertontime=200, insertofftime=150)
+        self.text = Tkinter.Text(self, insertontime=200, insertofftime=150)
         self.text.insert("end", self.startup)
         self.text.insert("end", sys.ps1)
         self.text.bind("<Return>", self.cb_return)
@@ -107,10 +116,10 @@ class Console(Frame):
 
         # The scroll bar.
 
-        self.scroll = Scrollbar(self, command=self.text.yview)
+        self.scroll = Tkinter.Scrollbar(self, command=self.text.yview)
         self.text.config(yscrollcommand=self.scroll.set)
-        self.scroll.pack(side=RIGHT, fill=Y)
-        self.text.pack(fill=BOTH, expand=1)
+        self.scroll.pack(side=Tkinter.RIGHT, fill=Tkinter.Y)
+        self.text.pack(fill=Tkinter.BOTH, expand=1)
         self.text.focus()
 
         # Configurable options.
@@ -120,15 +129,15 @@ class Console(Frame):
                         "morecolour": "#a0d0f0",
                         "badcolour": "#e0b0b0",
                         "runcolour": "#90d090"}
-        apply(self.config, (), self.options)
-        apply(self.config, (), options)
+        self.config(**self.options)
+        self.config(**options)
 
     def __getitem__(self, key):
         return self.options[key]
 
     def __setitem__(self, key, value):
-        if not self.options.has_key(key):
-            raise KeyError, 'no such configuration option "%s"' % key
+        if not key in self.options:
+            raise KeyError('no such configuration option "%s"' % key)
         self.options[key] = value
         if key == "stdoutcolour":
             self.text.tag_configure("stdout", foreground=value)
@@ -341,7 +350,7 @@ class Console(Frame):
 
         self.compmenus = []
         menufont = self.text.cget("font")
-        menu = Menu(font=menufont, bd=1, tearoff=0)
+        menu = Tkinter.Menu(font=menufont, bd=1, tearoff=0)
         self.compmenus.append(menu)
         while keys:
             try: finishchar = finisher(getattr(object, keys[0]))
@@ -697,33 +706,33 @@ class Console(Frame):
 
         try:
             code = compile(source, "<console>", "single")
-        except SyntaxError, err:
+        except SyntaxError as err:
             pass
         else:
             return "okay", code
 
         try:
             code1 = compile(source + "\n", "<console>", "single")
-        except SyntaxError, err1:
+        except SyntaxError as err1:
             pass
         else:
             return "more", code1
 
         try:
             code2 = compile(source + "\n\n", "<console>", "single")
-        except SyntaxError, err2:
+        except SyntaxError as err2:
             pass
 
         try:
             code3 = compile(source + "\n", "<console>", "exec")
-        except SyntaxError, err3:
+        except SyntaxError as err3:
             pass
         else:
             return "okay", code3
 
         try:
             code4 = compile(source + "\n\n", "<console>", "exec")
-        except SyntaxError, err4:
+        except SyntaxError as err4:
             pass
 
         if err3[1][2] != err4[1][2]:
@@ -742,7 +751,8 @@ class Console(Frame):
         sys.stdout, sys.stderr = self.stdout, self.stderr
 
         try:
-            exec code in self.dict
+            #exec code in self.dict
+            exec(code, self.dict)
         except:
             self.error = 1
             sys.last_type = sys.exc_type
@@ -777,7 +787,7 @@ def members(object):
         for key in object.__dict__.keys(): result[key] = 1
         result["__dict__"] = 1
     except: pass
-    if type(object) is types.ClassType:
+    if type(object) is type:
         scanclass(object, result)
         result["__name__"] = 1
         result["__bases__"] = 1
@@ -800,10 +810,10 @@ def commonprefix(keys):
             if max == 0: return ''
     return prefixes[max]
 
-callabletypes = [types.FunctionType, types.MethodType, types.ClassType,
+callabletypes = [types.FunctionType, types.MethodType, type,
                  types.BuiltinFunctionType, types.BuiltinMethodType]
-sequencetypes = [types.TupleType, types.ListType]
-mappingtypes = [types.DictType]
+sequencetypes = [tuple, list]
+mappingtypes = [dict]
 
 try:
     import ExtensionClass
@@ -828,10 +838,32 @@ def finisher(object):
 
 
 # Main program.
+class ConsoleApp(threading.Thread):
+    def __init__(self):
+        threading.Thread.__init__(self)
+        self.start()
+    def callback(self):
+       self.root.quit()
+    def run(self):
+        self.root=Tkinter.Tk()
+        self.root.protocol("WM_DELETE_WINDOW", self.callback)
+        self.s = Tkinter.StringVar()
+        self.s.set('Foo')
+        l = Tkinter.Label(self.root,textvariable=self.s)
+        l.pack()
+        c = Console(dict={})
+        c.dict["console"] = c
+        c.pack(fill=Tkinter.BOTH, expand=1)
+        c.master.title("Python Console v%s" % VERSION)
+        self.root.mainloop()
 
-if __name__ == "__main__":
+def start_console():
     c = Console(dict={})
     c.dict["console"] = c
-    c.pack(fill=BOTH, expand=1)
+    c.pack(fill=Tkinter.BOTH, expand=1)
     c.master.title("Python Console v%s" % VERSION)
-    mainloop()
+    Tkinter.mainloop()    
+
+        
+if __name__ == "__main__":
+    start_console()
